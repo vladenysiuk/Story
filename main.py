@@ -15,10 +15,6 @@ class FunctionStack:
     def pop(self):
         self.stack.pop()
         self.sz -= 1
-class Item:
-    def __init__(self,creationDate):
-        self.creationDate = creationDate
-
 class Region:
     def __init__(self,region_id,region_name):
         self.region_id = region_id
@@ -28,7 +24,13 @@ class Supermarket:
         self.supermarket_id = supermarket_id
         self.supermarket_name = supermarket_name
         self.facility_id = facility_id
-
+class Item:
+    def __init__(self, item_id,facility_id, quantity, creation_date, product_regional_id):
+        self.item_id = item_id
+        self.facility_id = facility_id
+        self.quantity = quantity
+        self.creation_date = creation_date
+        self.product_regional_id = product_regional_id
 class Product:
     def __init__(self, product_regional_id, region_id, product_id, sell_price, local_name, order_price, expiry_time, cnt, expired):
         self.product_regional_id = product_regional_id
@@ -53,20 +55,24 @@ def clearWindow():
     for widget in window.winfo_children():
         widget.destroy()
 # Product item manage console
-def getItemList(regionName,marketName,productName):
-    return [Item(45),Item(88),Item(26)]
-def displayProductDetails(regionName,marketName,productName):
+def getItemList(region,supermarket,product):
+    dbCursor.execute("SELECT * FROM item WHERE facility_id = " + str(supermarket.facility_id) + " AND product_regional_id = " + str(product.product_regional_id) + ";")
+    ret = []
+    for item in dbCursor:
+        ret.append(Item(item[0],item[1],item[2],item[3],item[4]))
+    return ret;
+def displayProductDetails(region,supermarket,product):
     clearWindow()
     # Heading
-    label = tk.Label(window, text="Item " + productName + " of supermarket " + marketName + " in region " + regionName)
+    label = tk.Label(window, text="Item " + product.local_name + " of supermarket " + supermarket.supermarket_name + " in region " + region.region_name)
     label.pack()
     # Go back
     backB = tk.Button(window, text="Back", command=lambda: (functionStack.pop(), functionStack.execute()))
     backB.pack()
     # Show item list
-    itemList = getItemList(regionName,marketName,productName)
+    itemList = getItemList(region,supermarket,product)
     for i in range(len(itemList)):
-        prodInfo = tk.Label(window, text = "Creation date: "+str(itemList[i].creationDate))
+        prodInfo = tk.Label(window, text = str(i+1) + ") Creation date: "+str(itemList[i].creation_date))
         prodInfo.pack()
 
 # Product list manage console
