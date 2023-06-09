@@ -25,11 +25,10 @@ class Supermarket:
         self.supermarket_name = supermarket_name
         self.facility_id = facility_id
 class Item:
-    def __init__(self, item_id,facility_id, quantity, creation_date, product_regional_id):
+    def __init__(self, item_id,facility_id, expiry_date, product_regional_id):
         self.item_id = item_id
         self.facility_id = facility_id
-        self.quantity = quantity
-        self.creation_date = creation_date
+        self.expiry_date = expiry_date
         self.product_regional_id = product_regional_id
 class Product:
     def __init__(self, product_regional_id, region_id, product_id, sell_price, local_name, order_price, expiry_time, cnt, expired):
@@ -42,13 +41,15 @@ class Product:
         self.expiry_time = expiry_time
         self.cnt = cnt
         self.expired = expired
-    def increment(self):
+    def increment(self, supermarket):
         self.cnt += 1
-    def decrement(self):
+        orderProduct(supermarket, self.product_regional_id, self.expiry_time)
+    def decrement(self, supermarket):
         if self.cnt>0:
             self.cnt -= 1
             if self.expired>0:
                 self.expired -= 1
+            deleteProduct(supermarket,self.product_regional_id)
 
 def clearWindow():
     # Destroy current widgets
@@ -59,7 +60,7 @@ def getItemList(region,supermarket,product):
     dbCursor.execute("SELECT * FROM item WHERE facility_id = " + str(supermarket.facility_id) + " AND product_regional_id = " + str(product.product_regional_id) + ";")
     ret = []
     for item in dbCursor:
-        ret.append(Item(item[0],item[1],item[2],item[3],item[4]))
+        ret.append(Item(item[0],item[1],item[2],item[3]))
     return ret;
 def displayProductDetails(region,supermarket,product):
     clearWindow()
@@ -72,7 +73,7 @@ def displayProductDetails(region,supermarket,product):
     # Show item list
     itemList = getItemList(region,supermarket,product)
     for i in range(len(itemList)):
-        prodInfo = tk.Label(window, text = str(i+1) + ") Creation date: "+str(itemList[i].creation_date))
+        prodInfo = tk.Label(window, text = str(i+1) + ") Expiry date: "+str(itemList[i].expiry_date))
         prodInfo.pack()
 
 # Product list manage console
@@ -86,10 +87,29 @@ def getMarketProductList(region,supermarket):
         ret[i].cnt = int(str(dbCursor.fetchall()[0][0]))
         dbCursor.execute("SELECT COUNT(*) FROM item WHERE facility_id = " + str(
             supermarket.facility_id) + " AND product_regional_id = " + str(
-            ret[i].product_regional_id) + " AND item.creation_date + " + str(ret[i].expiry_time) + "> '" + curDate + "';")
+            ret[i].product_regional_id) + " AND item.expiry_date > '" + curDate + "';")
         ret[i].expired = int(str(dbCursor.fetchall()[0][0]))
 
     return ret
+def deleteProduct(supermarket, product_regional_id):
+    dbCursor.execute("WITH min_expiry_date AS ( SELECT MIN(expiry_date) AS min_expiry FROM item WHERE facility_id = " + str(supermarket.facility_id) + " AND product_regional_id = " + str(product_regional_id) + ") SELECT item_id FROM item WHERE facility_id = " + str(supermarket.facility_id) + "  AND expiry_date = (SELECT min_expiry FROM min_expiry_date);")
+    dbCursor.execute("DELETE FROM item WHERE item_id = " + str(dbCursor.fetchall()[0][0]))
+def orderProduct(supermarket, product_regional_id, expiry_time):
+    # find max item_id
+    dbCursor.execute("SELECT item_id FROM item ORDER BY item_id DESC LIMIT 1;")
+    mxId = int(dbCursor.fetchall()[0][0])
+    dbCursor.execute("INSERT INTO item (item_id, facility_id, expiry_date, product_regional_id) VALUES (" + str(mxId+1) + ", " + str(supermarket.facility_id) + ", '" + curDate + " + " + str(expiry_time) + "', " + str(product_regional_id) + ");")
+def addProduct(region, supermarket, productName):
+    # find regional_product_id
+    dbCursor.execute("SELECT product_regional_id, expiry_time FROM product_regional WHERE local_name = '" + productName + "' AND region_id = " + str(region.region_id)+";")
+    cpy = dbCursor.fetchall()
+    if (len(cpy)==0 or len(cpy[0])==0):
+        return
+    else:
+        product_regional_id = int(cpy[0][0])
+        expiry_time = int(cpy[0][1])
+    orderProduct(supermarket, product_regional_id,expiry_time)
+
 def displayProductList(region,supermarket):
     clearWindow()
     # Heading
@@ -110,18 +130,26 @@ def displayProductList(region,supermarket):
         Qcnt[i].pack()
         Ecnt.append(tk.Label(window, text = "expired: "+str(productList[i].expired)))
         Ecnt[i].pack()
-        increment = tk.Button(window, text = "+", command=lambda i=i:(productList[i].increment(),
+        increment = tk.Button(window, text = "+", command=lambda i=i:(productList[i].increment(supermarket),
                                                                       Qcnt[i].config(text="quantity: "+str(productList[i].cnt)),
                                                                       Ecnt[i].config(text="expired: "+str(productList[i].expired))))
         increment.pack()
         decrement = tk.Button(window, text="-", command=lambda i=i: (
-        productList[i].decrement(),
+        productList[i].decrement(supermarket),
                                                                       Qcnt[i].config(text="quantity: "+str(productList[i].cnt)),
                                                                       Ecnt[i].config(text="expired: "+str(productList[i].expired))))
         decrement.pack()
         detailsB = tk.Button(window, text = "details", command = lambda region = region,supermarket = supermarket,product=productList[i] :(functionStack.add_function(displayProductDetails,region,supermarket,product),displayProductDetails(region,supermarket,product)))
         detailsB.pack()
-
+    # Add product
+    addProductLabel = tk.Label(window, text="Type new product name")
+    addProductLabel.pack()
+    productNameField = tk.Entry(window)
+    productNameField.pack()
+    addProductB = tk.Button(window, text="Add product",
+                                command=lambda: (
+                                addProduct(region, supermarket, productNameField.get()), displayProductList(region,supermarket)))
+    addProductB.pack()
 
 # Supermarket manage console
 def displayMarket(region,supermarket):
@@ -143,7 +171,18 @@ def getSupermarketList(region):
     for supermarket in dbCursor:
         ret.append(Supermarket(supermarket[0],supermarket[1],supermarket[2]))
     return ret
-def displayMarketRegion(region):
+
+def addSupermarket(region,supermarketName, facility_id=-1):
+    # find suitable facility
+    if facility_id == -1:
+        dbCursor.execute("SELECT facility_id FROM facility WHERE region_id = "+str(region.region_id)+";")
+        facility_id = int(dbCursor.fetchall()[0][0])
+    # find max supermarket_id
+    dbCursor.execute("SELECT supermarket_id FROM supermarket ORDER BY supermarket_id DESC LIMIT 1;")
+    mxId = int(dbCursor.fetchall()[0][0])
+    print("INSERT INTO supermarket (supermarket_id, supermarket_name, facility_id) VALUES (" + str(mxId + 1) + ", '" + supermarketName + "', "+str(facility_id)+");")
+    dbCursor.execute("INSERT INTO supermarket (supermarket_id, supermarket_name, facility_id) VALUES (" + str(mxId + 1) + ", '" + supermarketName + "', "+str(facility_id)+");")
+def displaySupermarketRegion(region):
     clearWindow()
     # Heading
     label = tk.Label(window, text="Supermarkets in region " + region.region_name)
@@ -158,6 +197,15 @@ def displayMarketRegion(region):
         marketB = tk.Button(window, text = supermarket.supermarket_name, command = lambda region=region, supermarket=supermarket: (functionStack.add_function(displayMarket,region,supermarket),displayMarket(region,supermarket)))
         marketB.pack()
 
+    # Add supermarket
+    addSupermarketLabel = tk.Label(window, text="Type new supermarket name")
+    addSupermarketLabel.pack()
+    supermarketNameField = tk.Entry(window)
+    supermarketNameField.pack()
+    addSupermarketB = tk.Button(window, text="Add supermarket",
+                           command=lambda: (addSupermarket(region,supermarketNameField.get()), displaySupermarketRegion(region)))
+    addSupermarketB.pack()
+
 # Marker region selector
 def getMarketRegions():
     dbCursor.execute("SELECT region_id,region_name FROM region;")
@@ -166,6 +214,16 @@ def getMarketRegions():
         ret.append(Region(region[0],region[1]))
     return ret
 
+def addRegion(regionName):
+    # find max region_id
+    dbCursor.execute("SELECT region_id FROM region ORDER BY region_id DESC LIMIT 1;")
+    mxId = int(dbCursor.fetchall()[0][0])
+    newRegion = mxId+1
+    dbCursor.execute("INSERT INTO region (region_id, region_name, road_list_id) VALUES ("+str(mxId+1)+", '" + regionName + "', 1);")
+    # find max facility_id
+    dbCursor.execute("SELECT facility_id FROM facility ORDER BY facility_id DESC LIMIT 1;")
+    mxId = int(dbCursor.fetchall()[0][0])
+    dbCursor.execute("INSERT INTO facility (facility_id, region_id) VALUES (" + str(mxId+1) + ", " + str(newRegion) + ");")
 def displayMarketRegionSelector():
     clearWindow()
     # Heading
@@ -178,8 +236,15 @@ def displayMarketRegionSelector():
     regionList = getMarketRegions()
 
     for region in regionList:
-        regionB = tk.Button(window, text = region.region_name, command = lambda region = region: (functionStack.add_function(displayMarketRegion,region),displayMarketRegion(region)))
+        regionB = tk.Button(window, text = region.region_name, command = lambda region = region: (functionStack.add_function(displaySupermarketRegion,region),displaySupermarketRegion(region)))
         regionB.pack()
+    # Add region
+    addRegionLabel = tk.Label(window, text = "Type new region name")
+    addRegionLabel.pack()
+    regionNameField = tk.Entry(window)
+    regionNameField.pack()
+    addRegionB = tk.Button(window, text = "Add region", command = lambda: (addRegion(regionNameField.get()),displayMarketRegionSelector()))
+    addRegionB.pack()
 
 # Main screen
 def displayMainScreen():
@@ -201,6 +266,7 @@ def test():
 curDate = "2023-01-07"
 conn = psycopg2.connect(database="postgres", user="admin",
     password="", host="localhost", port=5432)
+conn.autocommit = True
 dbCursor = conn.cursor()
 #test()
 
@@ -209,3 +275,5 @@ functionStack = FunctionStack()
 functionStack.add_function(displayMainScreen)
 displayMainScreen()
 window.mainloop()
+
+dbCursor.close()
