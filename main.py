@@ -63,14 +63,23 @@ def getItemList(region,supermarket,product):
     return ret;
 def displayProductDetails(region,supermarket,product):
     clearWindow()
+    itemList = getItemList(region, supermarket, product)
+    if (len(itemList)==0):
+        functionStack.pop()
+        functionStack.execute()
+        return
     # Heading
     label = tk.Label(window, text="Item " + product.local_name + " of supermarket " + supermarket.supermarket_name + " in region " + region.region_name)
     label.pack()
     # Go back
     backB = tk.Button(window, text="Back", command=lambda: (functionStack.pop(), functionStack.execute()))
     backB.pack()
+    # Delete oldest
+    deleteB = tk.Button(window, text="Delete oldest", command=lambda: (
+    deleteProduct(supermarket, product.product_regional_id), displayProductDetails(region, supermarket, product)))
+    deleteB.pack()
     # Show item list
-    itemList = getItemList(region,supermarket,product)
+
     for i in range(len(itemList)):
         prodInfo = tk.Label(window, text = str(i+1) + ") Expiry date: "+str(itemList[i].expiry_date))
         prodInfo.pack()
@@ -213,6 +222,8 @@ def addSupermarket(region,supermarketName, facility_id=-1):
     mxId = int(dbCursor.fetchall()[0][0])
     print("INSERT INTO supermarket (supermarket_id, supermarket_name, facility_id) VALUES (" + str(mxId + 1) + ", '" + supermarketName + "', "+str(facility_id)+");")
     dbCursor.execute("INSERT INTO supermarket (supermarket_id, supermarket_name, facility_id) VALUES (" + str(mxId + 1) + ", '" + supermarketName + "', "+str(facility_id)+");")
+def deleteSupermarket(supermarket):
+    dbCursor.execute("DELETE FROM supermarket WHERE supermarket_id="+str(supermarket.supermarket_id))
 def displaySupermarketRegion(region):
     clearWindow()
     # Heading
@@ -227,6 +238,8 @@ def displaySupermarketRegion(region):
     for supermarket in supermarketList:
         marketB = tk.Button(window, text = supermarket.supermarket_name, command = lambda region=region, supermarket=supermarket: (functionStack.add_function(displayMarket,region,supermarket),displayMarket(region,supermarket)))
         marketB.pack()
+        deleteB = tk.Button(window,text = "delete", command = lambda supermarket = supermarket: (deleteSupermarket(supermarket),displaySupermarketRegion(region)))
+        deleteB.pack(side=tk.RIGHT)
 
     # Add supermarket
     addSupermarketLabel = tk.Label(window, text="Type new supermarket name")
