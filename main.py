@@ -31,10 +31,9 @@ class Item:
         self.expiry_date = expiry_date
         self.product_regional_id = product_regional_id
 class Product:
-    def __init__(self, product_regional_id, region_id, product_id, sell_price, local_name, order_price, expiry_time, cnt, expired):
+    def __init__(self, product_regional_id, region_id, sell_price, local_name, order_price, expiry_time, cnt, expired):
         self.product_regional_id = product_regional_id
         self.region_id = region_id
-        self.product_id = product_id
         self.sell_price = sell_price
         self.local_name = local_name
         self.order_price = order_price
@@ -81,7 +80,7 @@ def getMarketProductList(region,supermarket):
     dbCursor.execute("SELECT * FROM product_regional WHERE product_regional_id IN (SELECT product_regional_id FROM item WHERE facility_id = " + str(supermarket.facility_id) + ");")
     ret = []
     for product in dbCursor:
-        ret.append(Product(product[0],product[1],product[2],product[3],product[4],product[5],product[6],0,0))
+        ret.append(Product(product[0],product[1],product[2],product[3],product[4],product[5],0,0))
     for i in range(len(ret)):
         dbCursor.execute("SELECT COUNT(*) FROM item WHERE facility_id = " + str(supermarket.facility_id) + " AND product_regional_id = " + str(ret[i].product_regional_id)+";")
         ret[i].cnt = int(str(dbCursor.fetchall()[0][0]))
@@ -99,11 +98,43 @@ def orderProduct(supermarket, product_regional_id, expiry_time):
     dbCursor.execute("SELECT item_id FROM item ORDER BY item_id DESC LIMIT 1;")
     mxId = int(dbCursor.fetchall()[0][0])
     dbCursor.execute("INSERT INTO item (item_id, facility_id, expiry_date, product_regional_id) VALUES (" + str(mxId+1) + ", " + str(supermarket.facility_id) + ", '" + curDate + " + " + str(expiry_time) + "', " + str(product_regional_id) + ");")
+
+def addProductType(region,local_name, sell_price, order_price, expiry_time):
+    # find max product_regional_id
+    dbCursor.execute("SELECT product_regional_id FROM product_regional ORDER BY product_regional_id DESC LIMIT 1;")
+    mxId = int(dbCursor.fetchall()[0][0])
+    dbCursor.execute("INSERT INTO product_regional (region_id,sell_price,local_name,order_price,expiry_time,product_regional_id) VALUES ("+
+                     str(region.region_id) + "," + sell_price + ",'" + local_name + "'," + order_price + "," + expiry_time + "," + str(mxId+1) + ");")
+def createProduct(region,supermarket,productName):
+    subWindow = tk.Tk()
+
+    label = tk.Label(subWindow,text="Create new product " + productName)
+    label.pack()
+    sell_priceL = tk.Label(subWindow, text = "sell price")
+    sell_priceL.pack()
+    sell_priceE = tk.Entry(subWindow)
+    sell_priceE.pack()
+    order_priceL = tk.Label(subWindow, text = "order price")
+    order_priceL.pack()
+    order_priceE = tk.Entry(subWindow)
+    order_priceE.pack()
+    expiry_timeL = tk.Label(subWindow,text = "expiry time")
+    expiry_timeL.pack()
+    expiry_timeE = tk.Entry(subWindow)
+    expiry_timeE.pack()
+
+    submitB = tk.Button(subWindow,text = "submit", command=lambda:(addProductType(region,productName,sell_priceE.get(),
+                                                                          order_priceE.get(),
+                                                                          expiry_timeE.get()),subWindow.destroy()))
+    submitB.pack()
+    subWindow.mainloop()
+
 def addProduct(region, supermarket, productName):
     # find regional_product_id
     dbCursor.execute("SELECT product_regional_id, expiry_time FROM product_regional WHERE local_name = '" + productName + "' AND region_id = " + str(region.region_id)+";")
     cpy = dbCursor.fetchall()
-    if (len(cpy)==0 or len(cpy[0])==0):
+    if len(cpy)==0 or len(cpy[0])==0:
+        createProduct(region,supermarket,productName)
         return
     else:
         product_regional_id = int(cpy[0][0])
@@ -224,7 +255,7 @@ def addRegion(regionName):
     dbCursor.execute("SELECT facility_id FROM facility ORDER BY facility_id DESC LIMIT 1;")
     mxId = int(dbCursor.fetchall()[0][0])
     dbCursor.execute("INSERT INTO facility (facility_id, region_id) VALUES (" + str(mxId+1) + ", " + str(newRegion) + ");")
-def displayMarketRegionSelector():
+def displayRegionSelector():
     clearWindow()
     # Heading
     label = tk.Label(window, text="Choose region")
@@ -243,17 +274,17 @@ def displayMarketRegionSelector():
     addRegionLabel.pack()
     regionNameField = tk.Entry(window)
     regionNameField.pack()
-    addRegionB = tk.Button(window, text = "Add region", command = lambda: (addRegion(regionNameField.get()),displayMarketRegionSelector()))
+    addRegionB = tk.Button(window, text = "Add region", command = lambda: (addRegion(regionNameField.get()),displayRegionSelector()))
     addRegionB.pack()
 
 # Main screen
 def displayMainScreen():
     clearWindow()
     # Heading
-    label = tk.Label(window, text="What do you want do handle?")
+    label = tk.Label(window, text="Story management system")
     label.pack()
     # Supermarket management
-    marketB = tk.Button(window, text="Supermarkets", command=lambda: (functionStack.add_function(displayMarketRegionSelector),displayMarketRegionSelector()))
+    marketB = tk.Button(window, text="Start", command=lambda: (functionStack.add_function(displayRegionSelector),displayRegionSelector()))
     marketB.pack()
     # Prices management
     #pricesB = tk.Button(window, text="Prices", command=on_prices_click())
