@@ -1,6 +1,7 @@
 import tkinter as tk
 import psycopg2
-
+import matplotlib.pyplot as plt
+import datetime
 class FunctionStack:
     def __init__(self):
         self.stack = []
@@ -31,7 +32,7 @@ class Item:
         self.expiry_date = expiry_date
         self.product_regional_id = product_regional_id
 class Product:
-    def __init__(self, product_regional_id, region_id, sell_price, local_name, order_price, expiry_time, cnt, expired):
+    def __init__(self, product_regional_id, region_id, sell_price, local_name, order_price, expiry_time, cnt=0, expired=0):
         self.product_regional_id = product_regional_id
         self.region_id = region_id
         self.sell_price = sell_price
@@ -137,6 +138,7 @@ def addProductType(region,local_name, sell_price, order_price, expiry_time):
         mxId = 0
     dbCursor.execute("INSERT INTO product_regional (region_id,sell_price,local_name,order_price,expiry_time,product_regional_id) VALUES ("+
                      str(region.region_id) + "," + sell_price + ",'" + local_name + "'," + order_price + "," + expiry_time + "," + str(mxId+1) + ");")
+    addPriceChange(Product(mxId, region.region_id, sell_price, local_name, order_price, expiry_time), order_price)
 def createProduct(region,supermarket,productName):
     subWindow = tk.Tk()
 
@@ -379,6 +381,21 @@ def getProductList():
     for product in dbCursor:
         ret.append(Product(product[0], product[1],product[2],product[3],product[4],product[5],0,0))
     return ret
+
+def addPriceChange(product,new_price):
+    # find max price_change_id
+    dbCursor.execute("SELECT price_change_id FROM price_change ORDER BY price_change_id DESC LIMIT 1;")
+    result = dbCursor.fetchall()
+    if result:
+        mxId = int(result[0][0])
+    else:
+        mxId = 0
+
+    newPriceChange = mxId + 1
+    dbCursor.execute("INSERT INTO price_change (price_change_id, product_regional_id, new_price,old_price,date) VALUES (%s, %s, %s, %s, %s);",
+                     (newPriceChange,product.product_regional_id,new_price,product.order_price,curDate))
+
+
 def changeData(product, local_name,sell_price,order_price,expiry_time):
     if product.local_name!=local_name:
         dbCursor.execute("UPDATE product_regional SET local_name = '" + str(local_name) +
@@ -389,12 +406,46 @@ def changeData(product, local_name,sell_price,order_price,expiry_time):
     if str(product.order_price) != order_price:
         dbCursor.execute("UPDATE product_regional SET order_price = '" + str(order_price) +
                          "' WHERE product_regional_id=" + str(product.product_regional_id) + ";")
+        addPriceChange(product,order_price)
     if str(product.expiry_time) != expiry_time:
         dbCursor.execute("UPDATE product_regional SET expiry_time = '" + str(expiry_time) +
                          "' WHERE product_regional_id=" + str(product.product_regional_id) + ";")
 
+def getProductDataPoints(product):
+        dbCursor.execute("SELECT * FROM price_change WHERE product_regional_id = " + str(product.product_regional_id) + "ORDER BY date;")
+        ret = []
+        for priceChange in dbCursor:
+            ret.append([priceChange[3],int(priceChange[2])])
+        return ret
+def displayPriceGraph(product):
+    dataPoints = getProductDataPoints(product)
+    dates = []
+    y = []
+    for point in dataPoints:
+        dates.append(point[0])
+        y.append(point[1])
+    # Convert string dates to datetime objects
+    x = [datetime.datetime.strptime(str(date), '%Y-%m-%d') for date in dates]
+
+    # Plot y versus x as lines and/or markers
+    plt.plot(x, y)
+
+    # Set the x and y axis labels
+    plt.xlabel('Date')
+    plt.ylabel('y-axis')
+
+    # Set the title of the graph
+    plt.title('My Graph')
+
+    # Format x-axis to display dates in a particular format
+    plt.gcf().autofmt_xdate()
+
+    # Display the figure
+    plt.show()
 def editProdInfo(product):
     curWindow = tk.Tk()
+    displayGraphB = tk.Button(curWindow,text = "Display price history",command=lambda :(displayPriceGraph(product)))
+    displayGraphB.pack()
     label = tk.Label(curWindow,text = "Edit info")
     label.pack()
     #Name
