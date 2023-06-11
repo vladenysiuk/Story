@@ -2,6 +2,7 @@ import tkinter as tk
 import psycopg2
 import matplotlib.pyplot as plt
 import datetime
+import numpy as np
 class FunctionStack:
     def __init__(self):
         self.stack = []
@@ -61,7 +62,17 @@ def getItemList(region,supermarket,product):
     ret = []
     for item in dbCursor:
         ret.append(Item(item[0],item[1],item[2],item[3]))
-    return ret;
+    return ret
+def sellItem(supermarket,item,date):
+    # calculate price
+    dbCursor.execute("SELECT sell_price FROM product_regional WHERE product_regional_id = " + str(item.product_regional_id))
+    price = dbCursor.fetchall()[0][0]
+    # add to sales_history
+    dbCursor.execute("INSERT INTO sales_history (item_id, price, date, supermarket_id) VALUES (%s, %s, %s, %s);",
+                     (item.product_regional_id,price,date,supermarket.supermarket_id))
+    dbCursor.execute("INSERT INTO sold_items (item_id, product_regional_id, sell_price, sell_date) VALUES (%s, %s, %s, %s);",
+                     (item.item_id,item.product_regional_id,price,date))
+    dbCursor.execute("DELETE FROM item WHERE item_id = " + str(item.item_id))
 def displayProductDetails(region,supermarket,product):
     clearWindow()
     itemList = getItemList(region, supermarket, product)
@@ -84,6 +95,10 @@ def displayProductDetails(region,supermarket,product):
     for i in range(len(itemList)):
         prodInfo = tk.Label(window, text = str(i+1) + ") Expiry date: "+str(itemList[i].expiry_date))
         prodInfo.pack()
+        # buy button
+        buyB = tk.Button(window,text = "Bought",command=lambda i=i:(sellItem(supermarket,itemList[i],curDate),
+                         displayProductDetails(region,supermarket,product)))
+        buyB.pack()
 
 # Product list manage console
 def getMarketProductList(region,supermarket):
@@ -118,6 +133,29 @@ def getMarketWorkersList(region,supermarket):
 def deleteProduct(supermarket, product_regional_id):
     dbCursor.execute("WITH min_expiry_date AS ( SELECT MIN(expiry_date) AS min_expiry FROM item WHERE facility_id = " + str(supermarket.facility_id) + " AND product_regional_id = " + str(product_regional_id) + ") SELECT item_id FROM item WHERE facility_id = " + str(supermarket.facility_id) + "  AND expiry_date = (SELECT min_expiry FROM min_expiry_date);")
     dbCursor.execute("DELETE FROM item WHERE item_id = " + str(dbCursor.fetchall()[0][0]))
+
+def addOrderHistory(facility_id, order_price, order_date):
+    # find max order_id
+    dbCursor.execute("SELECT order_id FROM order_history ORDER BY order_id DESC LIMIT 1;")
+    result = dbCursor.fetchall()
+    if result:
+        mxId = int(result[0][0])
+    else:
+        mxId = 0
+    dbCursor.execute("INSERT INTO order_history (order_id,facility_id,buy_price,order_date) VALUES (%s, %s, %s, %s);",
+                     (mxId+1,facility_id,order_price,order_date))
+    return mxId+1
+
+def addDeliveryHistory(supermarket,order_id,delivery_date):
+    # find max delivery_id
+    dbCursor.execute("SELECT delivery_id FROM deliveries_history ORDER BY delivery_id DESC LIMIT 1;")
+    result = dbCursor.fetchall()
+    if result:
+        mxId = int(result[0][0])
+    else:
+        mxId = 0
+    dbCursor.execute("INSERT INTO deliveries_history (delivery_id,supermarket_id,order_id,delivery_date) VALUES (%s, %s, %s, %s);",
+                     (mxId + 1, supermarket.supermarket_id, order_id, delivery_date))
 def orderProduct(supermarket, product_regional_id, expiry_time):
     # find max item_id
     dbCursor.execute("SELECT item_id FROM item ORDER BY item_id DESC LIMIT 1;")
@@ -127,6 +165,12 @@ def orderProduct(supermarket, product_regional_id, expiry_time):
     else:
         mxId = 0
     dbCursor.execute("INSERT INTO item (item_id, facility_id, expiry_date, product_regional_id) VALUES (" + str(mxId+1) + ", " + str(supermarket.facility_id) + ", '" + curDate + " + " + str(expiry_time) + "', " + str(product_regional_id) + ");")
+    # get order price
+    dbCursor.execute("SELECT order_price FROM product_regional WHERE product_regional_id = " + str(product_regional_id))
+    order_price = int(dbCursor.fetchall()[0][0])
+    order_id = addOrderHistory(supermarket.facility_id,order_price,curDate)
+    # add to deliveries history
+    addDeliveryHistory(supermarket,order_id,curDate)
 
 def addProductType(region,local_name, sell_price, order_price, expiry_time):
     # find max product_regional_id
@@ -253,6 +297,59 @@ def displayStuffList(region,supermarket):
     addWorkerB.pack()
 
 # Supermarket manage console
+
+def getMarketOrders(supermarket):
+    dbCursor.execute("SELECT * FROM deliveries_history WHERE supermarket_id = " + str(supermarket.supermarket_id))
+    deliveries = []
+    for delivery in dbCursor:
+        deliveries.append([delivery[3],delivery[1]])
+    ret = []
+    for [order_id,date] in deliveries:
+        dbCursor.execute("SELECT * FROM order_history WHERE order_id = " + str(order_id))
+        cpy = dbCursor.fetchall()
+        ret.append([date,cpy[0][1]])
+    return ret
+def getMarketSales(supermarket):
+    dbCursor.execute("SELECT * FROM sales_history WHERE supermarket_id = " + str(supermarket.supermarket_id))
+    ret = []
+    for sale in dbCursor:
+        ret.append([sale[2],sale[1]])
+    return ret
+def displayMarketProfit(supermarket):
+    orders = getMarketOrders(supermarket)
+    sales = getMarketSales(supermarket)
+    dataPoints = []
+    for point in orders:
+        dataPoints.append([point[0],-point[1]])
+    for point in sales:
+        dataPoints.append(point)
+    dataPoints.sort()
+    dates = []
+    y_values = []
+    for point in dataPoints:
+        dates.append(point[0])
+        y_values.append(point[1])
+    # Convert string dates to datetime objects
+    x = [datetime.datetime.strptime(str(date), '%Y-%m-%d') for date in dates]
+
+    # Compute cumulative sum of y
+    y = np.cumsum(y_values)
+
+    # Plot y versus x as lines and/or markers
+    plt.plot(x, y)
+
+    # Set the x and y axis labels
+    plt.xlabel('Date')
+    plt.ylabel('Cumulative y')
+
+    # Set the title of the graph
+    plt.title('My Graph')
+
+    # Format x-axis to display dates in a particular format
+    plt.gcf().autofmt_xdate()
+
+    # Display the figure
+    plt.show()
 def displayMarket(region,supermarket):
     clearWindow()
     # Heading
@@ -261,6 +358,9 @@ def displayMarket(region,supermarket):
     # Go back
     backB = tk.Button(window, text="Back", command=lambda: (functionStack.pop(), functionStack.execute()))
     backB.pack()
+    # Profit graph
+    profitGraphB = tk.Button(window, text="Display market profit", command=lambda: displayMarketProfit(supermarket))
+    profitGraphB.pack()
     # Go to product list
     productListB = tk.Button(window, text = "Product list", command = (lambda region = region,supermarket = supermarket: (functionStack.add_function(displayProductList,region,supermarket),displayProductList(region,supermarket))))
     productListB.pack()
@@ -513,17 +613,12 @@ def displayMainScreen():
     # Product management
     pricesB = tk.Button(window, text="Products", command=lambda:(functionStack.add_function(displayProductControl),displayProductControl()))
     pricesB.pack()
-def test():
-    getSupermarketList(Region(1,"sdfs"))
-    i = 1
-    while i < 2:
-        i = 1
+
 curDate = "2023-01-07"
 conn = psycopg2.connect(database="postgres", user="admin",
     password="", host="localhost", port=5432)
 conn.autocommit = True
 dbCursor = conn.cursor()
-#test()
 
 window = tk.Tk()
 functionStack = FunctionStack()
