@@ -372,6 +372,83 @@ def displayRegionSelector():
     regionNameField.pack()
     addRegionB = tk.Button(window, text = "Add region", command = lambda: (addRegion(regionNameField.get()),displayRegionSelector()))
     addRegionB.pack()
+# Product control
+def getProductList():
+    dbCursor.execute("SELECT * FROM product_regional;")
+    ret = []
+    for product in dbCursor:
+        ret.append(Product(product[0], product[1],product[2],product[3],product[4],product[5],0,0))
+    return ret
+def changeData(product, local_name,sell_price,order_price,expiry_time):
+    if product.local_name!=local_name:
+        dbCursor.execute("UPDATE product_regional SET local_name = '" + str(local_name) +
+                         "' WHERE product_regional_id="+str(product.product_regional_id) + ";")
+    if str(product.sell_price)!=sell_price:
+        dbCursor.execute("UPDATE product_regional SET sell_price = '" + str(sell_price) +
+                         "' WHERE product_regional_id=" + str(product.product_regional_id) + ";")
+    if str(product.order_price) != order_price:
+        dbCursor.execute("UPDATE product_regional SET order_price = '" + str(order_price) +
+                         "' WHERE product_regional_id=" + str(product.product_regional_id) + ";")
+    if str(product.expiry_time) != expiry_time:
+        dbCursor.execute("UPDATE product_regional SET expiry_time = '" + str(expiry_time) +
+                         "' WHERE product_regional_id=" + str(product.product_regional_id) + ";")
+
+def editProdInfo(product):
+    curWindow = tk.Tk()
+    label = tk.Label(curWindow,text = "Edit info")
+    label.pack()
+    #Name
+    nameL = tk.Label(curWindow,text = "Name")
+    nameL.pack()
+    nameE = tk.Entry(curWindow)
+    nameE.pack()
+    nameE.insert(0,product.local_name)
+    #Sell
+    sellL = tk.Label(curWindow,text = "Sell price")
+    sellL.pack()
+    sellE = tk.Entry(curWindow)
+    sellE.pack()
+    sellE.insert(0,str(product.sell_price))
+    #Order
+    orderL = tk.Label(curWindow,text = "Order price")
+    orderL.pack()
+    orderE = tk.Entry(curWindow)
+    orderE.pack()
+    orderE.insert(0,str(product.order_price))
+    #Expiry
+    expiryL = tk.Label(curWindow,text = "Expiry time")
+    expiryL.pack()
+    expiryE = tk.Entry(curWindow)
+    expiryE.pack()
+    expiryE.insert(0,str(product.expiry_time))
+    #Submit
+    submitB = tk.Button(curWindow, text="Submit",
+                           command=lambda: (changeData(product, nameE.get(),sellE.get(),orderE.get(),expiryE.get()),curWindow.destroy(),displayProductControl()))
+    submitB.pack()
+    curWindow.mainloop()
+
+def displayProductControl():
+    clearWindow()
+    # Heading
+    label = tk.Label(window, text="Product control")
+    label.pack()
+    # Go back
+    backB = tk.Button(window, text="Back", command=lambda: (functionStack.pop(), functionStack.execute()))
+    backB.pack()
+    # Product list
+    productList = getProductList()
+    regionList = getMarketRegions()
+    regionDict = {}
+    for region in regionList:
+        regionDict[region.region_id] = region.region_name
+    for product in productList:
+        productB = tk.Button(window,text = product.local_name + "  " +
+                                           regionDict[product.region_id] + ": sell price: "+str(product.sell_price) +
+                                           ", order price: "+str(product.order_price) + ", expiry time: "
+                                           + str(product.expiry_time),
+                             command = lambda product = product: (editProdInfo(product)))
+        productB.pack()
+
 
 # Main screen
 def displayMainScreen():
@@ -380,19 +457,19 @@ def displayMainScreen():
     label = tk.Label(window, text="Story management system")
     label.pack()
     # Supermarket management
-    marketB = tk.Button(window, text="Start", command=lambda: (functionStack.add_function(displayRegionSelector),displayRegionSelector()))
+    marketB = tk.Button(window, text="Supermarkets", command=lambda: (functionStack.add_function(displayRegionSelector),displayRegionSelector()))
     marketB.pack()
-    # Prices management
-    #pricesB = tk.Button(window, text="Prices", command=on_prices_click())
-    #pricesB.pack()
+    # Product management
+    pricesB = tk.Button(window, text="Products", command=lambda:(functionStack.add_function(displayProductControl),displayProductControl()))
+    pricesB.pack()
 def test():
     getSupermarketList(Region(1,"sdfs"))
     i = 1
     while i < 2:
         i = 1
 curDate = "2023-01-07"
-conn = psycopg2.connect(database="postgres", user="postgres",
-    password="1111", host="localhost", port=5432)
+conn = psycopg2.connect(database="postgres", user="admin",
+    password="", host="localhost", port=5432)
 conn.autocommit = True
 dbCursor = conn.cursor()
 #test()
